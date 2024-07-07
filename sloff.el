@@ -13,6 +13,7 @@
 
 (require 'cl-lib)
 (require 'hl-line)
+(require 'corfu)
 
 (defvar sloff-reference-buffer nil)
 
@@ -74,6 +75,12 @@
       (hl-line-unhighlight)
     (apply function args)))
 
+(defun sloff-corfu--popup-show@around (function pos &rest args)
+  (if-let ((window (get-buffer-window sloff-buffer)))
+      (with-selected-window window
+        (apply function (posn-at-point (window-point window) window) args))
+    (apply function pos args)))
+
 (defun sloff-mode-enable ()
   (sloff-select-reference-buffer)
   (pop-to-buffer (setf sloff-buffer (get-buffer-create (concat "​" (buffer-name sloff-reference-buffer)))))
@@ -88,6 +95,7 @@
   (advice-add #'blink-cursor-start :after #'sloff-blink-cursor-start@after)
   (advice-add #'blink-cursor-end :after #'sloff-blink-cursor-end@after)
   (advice-add #'hl-line-highlight :around #'sloff-hl-line-highlight@around)
+  (advice-add #'corfu--popup-show :around #'sloff-corfu--popup-show@around)
   (add-hook 'post-self-insert-hook #'sloff-buffer-insert-content))
 
 (defvar sloff-kill-sloff-buffer-p t)
@@ -102,6 +110,7 @@
   (advice-remove #'blink-cursor-start #'sloff-blink-cursor-start@after)
   (advice-remove #'blink-cursor-end #'sloff-blink-cursor-end@after)
   (advice-remove #'hl-line-highlight #'sloff-hl-line-highlight@around)
+  (advice-remove #'corfu--popup-show #'sloff-corfu--popup-show@around)
   (remove-hook 'post-self-insert-hook #'sloff-buffer-insert-content))
 
 (define-minor-mode sloff-mode

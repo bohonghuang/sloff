@@ -167,5 +167,71 @@
   :group 'sloff
   (if sloff-explore-mode (sloff-explore-mode-enable) (sloff-explore-mode-disable)))
 
+(cl-defun sloff-move-to-window-line (&optional (percent 0.5))
+  (let ((recenter-positions (list percent)))
+    (move-to-window-line-top-bottom)))
+
+(defun sloff-fontify-no-font-lock-buffers ()
+  (cl-flet ((circular-list (&rest elems)
+              (when elems
+                (let ((list (cl-copy-list elems)))
+                  (setf (cdr (last list)) list)))))
+    (cl-loop with window-list = (window-list-1 (frame-first-window) 'ignore)
+             with window-ring = (apply #'circular-list window-list)
+             initially (unless (> (length window-list) 1) (cl-return))
+             for windows on window-ring
+             for (previous . next-windows) = windows
+             for (current) = next-windows
+             do (with-selected-window current
+                  (unless font-lock-mode
+                    (save-excursion
+                      (cl-loop with line-start = (progn (sloff-move-to-window-line 0.0) (line-number-at-pos))
+                               and line-end = (progn (sloff-move-to-window-line 1.0) (line-number-at-pos))
+                               for line from line-start to line-end
+                               for line-count from 0
+                               do
+                               (goto-char (point-min))
+                               (forward-line (1- line))
+                               (cl-loop with line = (line-number-at-pos)
+                                        and words = (apply
+                                                     #'circular-list
+                                                     (with-selected-window previous
+                                                       (save-excursion
+                                                         (sloff-move-to-window-line 1.0)
+                                                         (previous-line (min line-count (1- (line-number-at-pos))))
+                                                         (or
+                                                          (save-excursion
+                                                            (cl-loop with line = (line-number-at-pos)
+                                                                     initially (beginning-of-line) (back-to-indentation)
+                                                                     for word-start = (if (and (forward-word +1) (forward-word -1)) (point) (cl-return words))
+                                                                     for word-end = (if (forward-word +1) (point) (cl-return words))
+                                                                     while (= (line-number-at-pos) line)
+                                                                     collect (buffer-substring word-start word-end) into words
+                                                                     finally (cl-return words)))
+                                                          (save-excursion
+                                                            (back-to-indentation)
+                                                            (list (buffer-substring (point) (line-end-position))))))))
+                                        initially (beginning-of-line) (back-to-indentation)
+                                        for word in words
+                                        for word-start = (point)
+                                        for word-end = (if (forward-word +1) (point) (cl-return))
+                                        do (let ((buffer-read-only nil))
+                                             (ignore-error text-read-only (put-text-property word-start word-end 'face (get-text-property 0 'face word))))
+                                        while (= (line-number-at-pos) line))))
+                    (with-selected-window previous)))
+             until (eq next-windows window-ring))))
+
+(defvar sloff-fontify-timer nil)
+
+(defvar sloff-fontify-delay 0.5)
+
+(define-minor-mode sloff-fontify-mode
+  "Minor mode to fontify windows without font-lock to make their appearance similar to other windows."
+  :global t
+  :group 'sloff
+  (if sloff-fontify-mode
+      (cl-assert (null (cl-shiftf sloff-fontify-timer (run-with-idle-timer sloff-fontify-delay t #'sloff-fontify-no-font-lock-buffers))))
+    (cancel-timer (cl-shiftf sloff-fontify-timer nil))))
+
 (provide 'sloff)
 ;;; sloff.el ends here

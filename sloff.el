@@ -15,29 +15,31 @@
 (require 'hl-line)
 (require 'corfu)
 
-(defvar sloff-reference-buffer nil)
+(defvar sloff-insert-reference-buffer nil)
 
-(defvar sloff-buffer nil)
+(defvar sloff-insert-buffer nil)
 
-(defvar sloff-cursor-type 'box)
+(defvar sloff-insert-cursor-type 'box)
 
-(defvar sloff-action-predicate 'sloff-insert-default-predicate)
+(defvar sloff-insert-action-predicate 'sloff-insert-default-predicate)
 
-(defcustom sloff-show-cursor-in-selected-windows-p nil
-  "Non-nil means Sloff mode will not hide the cursor in selected window."
+(defcustom sloff-insert-show-cursor-in-selected-windows-p nil
+  "Non-nil means Sloff-Insert mode will not hide the cursor in selected window."
   :group 'sloff)
 
 (defun sloff-insert-default-predicate ()
-  (and (not (eq (current-buffer) sloff-buffer)) (not (minibufferp))))
+  (and (not (eq (current-buffer) sloff-insert-buffer)) (not (minibufferp))))
 
-(defun sloff-select-reference-buffer ()
+;;;###autoload
+(defun sloff-insert-select-reference-buffer ()
+  "Select the reference buffer for `sloff-insert-mode'."
   (interactive)
-  (setf sloff-reference-buffer (get-buffer (read-buffer "Select a reference buffer: "))))
+  (setf sloff-insert-reference-buffer (get-buffer (read-buffer "Select a reference buffer: "))))
 
-(defun sloff-buffer-insert-content ()
-  (when (funcall sloff-action-predicate)
-    (when-let ((window (get-buffer-window sloff-buffer)))
-      (if-let ((content (with-current-buffer sloff-reference-buffer
+(defun sloff-insert-buffer-insert-content ()
+  (when (funcall sloff-insert-action-predicate)
+    (when-let ((window (get-buffer-window sloff-insert-buffer)))
+      (if-let ((content (with-current-buffer sloff-insert-reference-buffer
                           (when-let ((beg (point))
                                      (end (ignore-errors
                                             (forward-char 1)
@@ -47,121 +49,127 @@
             (insert content)
             (hl-line-highlight))
         (progn
-          (setf (window-buffer window) sloff-reference-buffer)
-          (sloff-mode -1))))))
+          (setf (window-buffer window) sloff-insert-reference-buffer)
+          (sloff-insert-mode -1))))))
 
-(defun sloff-buffer-update ()
-  (when-let ((window (get-buffer-window sloff-buffer)))
+(defun sloff-insert-buffer-update ()
+  (when-let ((window (get-buffer-window sloff-insert-buffer)))
     (force-window-update window)))
 
 (defun sloff-blink-cursor-timer-function@after ()
-  (when (funcall sloff-action-predicate)
-    (with-current-buffer sloff-buffer
-      (setf cursor-in-non-selected-windows (if cursor-in-non-selected-windows nil sloff-cursor-type))
-      (sloff-buffer-update))
-    (unless sloff-show-cursor-in-selected-windows-p
+  (when (funcall sloff-insert-action-predicate)
+    (with-current-buffer sloff-insert-buffer
+      (setf cursor-in-non-selected-windows (if cursor-in-non-selected-windows nil sloff-insert-cursor-type))
+      (sloff-insert-buffer-update))
+    (unless sloff-insert-show-cursor-in-selected-windows-p
       (internal-show-cursor nil nil))))
 
 (defun sloff-blink-cursor-start@after ()
-  (when (funcall sloff-action-predicate)
-    (with-current-buffer sloff-buffer
+  (when (funcall sloff-insert-action-predicate)
+    (with-current-buffer sloff-insert-buffer
       (setf cursor-in-non-selected-windows nil)
-      (sloff-buffer-update))))
+      (sloff-insert-buffer-update))))
 
 (defun sloff-blink-cursor-end@after ()
-  (when (funcall sloff-action-predicate)
-    (with-current-buffer sloff-buffer
-      (setf cursor-in-non-selected-windows sloff-cursor-type)
-      (sloff-buffer-update))
-    (unless sloff-show-cursor-in-selected-windows-p
+  (when (funcall sloff-insert-action-predicate)
+    (with-current-buffer sloff-insert-buffer
+      (setf cursor-in-non-selected-windows sloff-insert-cursor-type)
+      (sloff-insert-buffer-update))
+    (unless sloff-insert-show-cursor-in-selected-windows-p
       (internal-show-cursor nil nil))))
 
 (defun sloff-hl-line-highlight@around (function &rest args)
-  (if (funcall sloff-action-predicate)
+  (if (funcall sloff-insert-action-predicate)
       (hl-line-unhighlight)
     (apply function args)))
 
 (defun sloff-corfu--popup-show@around (function pos &rest args)
-  (if-let ((window (get-buffer-window sloff-buffer)))
+  (if-let ((window (get-buffer-window sloff-insert-buffer)))
       (with-selected-window window
         (apply function (posn-at-point (window-point window) window) args))
     (apply function pos args)))
 
-(defun sloff-mode-enable ()
-  (sloff-select-reference-buffer)
-  (setf sloff-buffer (get-buffer-create (concat "​" (buffer-name sloff-reference-buffer))))
-  (if-let* ((window (get-buffer-window sloff-reference-buffer)))
-      (setf (window-buffer window) sloff-buffer)
-    (pop-to-buffer sloff-buffer))
-  (with-current-buffer sloff-buffer
+(defun sloff-insert-mode-enable ()
+  (sloff-insert-select-reference-buffer)
+  (setf sloff-insert-buffer (get-buffer-create (concat "​" (buffer-name sloff-insert-reference-buffer))))
+  (if-let* ((window (get-buffer-window sloff-insert-reference-buffer)))
+      (setf (window-buffer window) sloff-insert-buffer)
+    (pop-to-buffer sloff-insert-buffer))
+  (with-current-buffer sloff-insert-buffer
     (erase-buffer)
     (cl-multiple-value-bind (mode content)
-        (with-current-buffer sloff-reference-buffer
+        (with-current-buffer sloff-insert-reference-buffer
           (cl-values major-mode (buffer-substring (point-min) (point))))
       (insert content)
       (funcall mode))
-    (when-let ((window (get-buffer-window sloff-buffer)))
+    (when-let ((window (get-buffer-window sloff-insert-buffer)))
       (setf (window-point window) (point-max))))
   (advice-add #'blink-cursor-timer-function :after #'sloff-blink-cursor-timer-function@after)
   (advice-add #'blink-cursor-start :after #'sloff-blink-cursor-start@after)
   (advice-add #'blink-cursor-end :after #'sloff-blink-cursor-end@after)
   (advice-add #'hl-line-highlight :around #'sloff-hl-line-highlight@around)
   (advice-add #'corfu--popup-show :around #'sloff-corfu--popup-show@around)
-  (add-hook 'post-self-insert-hook #'sloff-buffer-insert-content))
+  (add-hook 'post-self-insert-hook #'sloff-insert-buffer-insert-content))
 
-(defvar sloff-kill-sloff-buffer-p t)
+(defvar sloff-insert-kill-fake-buffer-p t)
 
-(defun sloff-mode-disable ()
-  (when sloff-kill-sloff-buffer-p
-    (when-let ((buffer sloff-buffer))
+(defun sloff-insert-mode-disable ()
+  (when sloff-insert-kill-fake-buffer-p
+    (when-let ((buffer sloff-insert-buffer))
       (when-let ((window (get-buffer-window buffer)))
-        (setf (window-buffer window) sloff-reference-buffer))
+        (setf (window-buffer window) sloff-insert-reference-buffer))
       (kill-buffer buffer)))
-  (setf sloff-reference-buffer nil
-        sloff-buffer nil)
+  (setf sloff-insert-reference-buffer nil
+        sloff-insert-buffer nil)
   (advice-remove #'blink-cursor-timer-function #'sloff-blink-cursor-timer-function@after)
   (advice-remove #'blink-cursor-start #'sloff-blink-cursor-start@after)
   (advice-remove #'blink-cursor-end #'sloff-blink-cursor-end@after)
   (advice-remove #'hl-line-highlight #'sloff-hl-line-highlight@around)
   (advice-remove #'corfu--popup-show #'sloff-corfu--popup-show@around)
-  (remove-hook 'post-self-insert-hook #'sloff-buffer-insert-content))
+  (remove-hook 'post-self-insert-hook #'sloff-insert-buffer-insert-content))
 
-(define-minor-mode sloff-mode
-  "Minor mode to slack off at work time."
+;;;###autoload
+(define-minor-mode sloff-insert-mode
+  "Minor mode to insert the reference content in the fake buffer."
   :global t
   :group 'sloff
-  (if sloff-mode (condition-case nil (sloff-mode-enable) (quit (sloff-mode -1))) (sloff-mode-disable)))
+  (if sloff-insert-mode (condition-case nil (sloff-insert-mode-enable) (quit (sloff-insert-mode -1))) (sloff-insert-mode-disable)))
 
+;;;###autoload
 (defun sloff-emergency-quit ()
+  "One-click to close windows unrelated to work and exit `sloff-insert-mode'."
   (interactive)
   (with-temp-message (or (current-message) "")
-    (let ((sloff-kill-sloff-buffer-p nil)
-          (buffer sloff-buffer))
-      (sloff-mode -1)
+    (let ((sloff-insert-kill-fake-buffer-p nil)
+          (buffer sloff-insert-buffer))
+      (sloff-insert-mode -1)
       (when-let ((window (get-buffer-window buffer)))
         (select-window window)))))
 
+;;;###autoload
 (defun sloff-emergency-switch ()
+  "One-click to hide windows unrelated to work."
   (interactive)
-  (when-let ((buffer sloff-buffer))
+  (when-let ((buffer sloff-insert-buffer))
     (if-let ((window (get-buffer-window buffer)))
         (select-window window)
       (pop-to-buffer buffer))
     (delete-other-windows)))
 
 (defun sloff-explore-insert-content ()
-  (when sloff-mode (sloff-buffer-insert-content)))
+  (when sloff-insert-mode (sloff-insert-buffer-insert-content)))
 
 (defun sloff-explore-mode-enable ()
   (add-hook 'post-command-hook #'sloff-explore-insert-content nil t)
   (set (make-local-variable 'cursor-type) 'hbar)
-  (set (make-local-variable 'sloff-show-cursor-in-selected-windows-p) t))
+  (set (make-local-variable 'sloff-insert-show-cursor-in-selected-windows-p) t))
 
 (defun sloff-explore-mode-disable ()
   (remove-hook 'post-command-hook #'sloff-explore-insert-content t)
   (kill-local-variable 'cursor-type)
-  (kill-local-variable 'sloff-show-cursor-in-selected-windows-p))
+  (kill-local-variable 'sloff-insert-show-cursor-in-selected-windows-p))
 
+;;;###autoload
 (define-minor-mode sloff-explore-mode
   "Minor mode to slack off for exploring your own content at work time."
   :group 'sloff
@@ -225,6 +233,7 @@
 
 (defvar sloff-fontify-delay 0.5)
 
+;;;###autoload
 (define-minor-mode sloff-fontify-mode
   "Minor mode to fontify windows without font-lock to make their appearance similar to other windows."
   :global t

@@ -205,26 +205,30 @@
                                                      #'circular-list
                                                      (with-selected-window previous
                                                        (save-excursion
-                                                         (sloff-move-to-window-line 1.0)
-                                                         (previous-line (min line-count (1- (line-number-at-pos))))
-                                                         (or
-                                                          (save-excursion
-                                                            (cl-loop with line = (line-number-at-pos)
-                                                                     initially (beginning-of-line) (back-to-indentation)
-                                                                     for word-start = (if (and (forward-word +1) (forward-word -1)) (point) (cl-return words))
-                                                                     for word-end = (if (forward-word +1) (point) (cl-return words))
-                                                                     while (= (line-number-at-pos) line)
-                                                                     collect (buffer-substring word-start word-end) into words
-                                                                     finally (cl-return words)))
-                                                          (save-excursion
-                                                            (back-to-indentation)
-                                                            (list (buffer-substring (point) (line-end-position))))))))
+                                                         (let ((line-start (progn (sloff-move-to-window-line 0.0) (line-number-at-pos)))
+                                                               (line-end (progn (sloff-move-to-window-line 1.0) (line-number-at-pos))))
+                                                           (when (= line-start line-end)
+                                                             (cl-return))
+                                                           (forward-line (- (min line-count (1- (line-number-at-pos)))))
+                                                           (or
+                                                            (save-excursion
+                                                              (cl-loop with line = (line-number-at-pos)
+                                                                       initially (beginning-of-line) (back-to-indentation)
+                                                                       for word-start = (if (and (forward-word +1) (forward-word -1)) (point) (cl-return words))
+                                                                       for word-end = (if (forward-word +1) (point) (cl-return words))
+                                                                       while (= (line-number-at-pos) line)
+                                                                       collect (buffer-substring word-start word-end) into words
+                                                                       finally (cl-return words)))
+                                                            (save-excursion
+                                                              (back-to-indentation)
+                                                              (list (buffer-substring (point) (line-end-position)))))))))
                                         initially (beginning-of-line) (back-to-indentation)
                                         for word in words
                                         for word-start = (point)
                                         for word-end = (if (forward-word +1) (point) (cl-return))
                                         do (let ((buffer-read-only nil))
-                                             (ignore-error text-read-only (put-text-property word-start word-end 'face (get-text-property 0 'face word))))
+                                             (with-silent-modifications
+                                               (ignore-error text-read-only (put-text-property word-start word-end 'face (get-text-property 0 'face word)))))
                                         while (= (line-number-at-pos) line))))
                     (with-selected-window previous)))
              until (eq next-windows window-ring))))

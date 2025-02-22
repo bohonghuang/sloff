@@ -183,8 +183,11 @@
   (cl-flet ((circular-list (&rest elems)
               (when elems
                 (let ((list (cl-copy-list elems)))
-                  (setf (cdr (last list)) list)))))
-    (cl-loop with window-list = (window-list-1 (frame-first-window) 'ignore)
+                  (setf (cdr (last list)) list))))
+            (special-mode-window-p (window)
+              (with-current-buffer (window-buffer window)
+                (derived-mode-p 'special-mode))))
+    (cl-loop with window-list = (cl-delete-if #'special-mode-window-p (window-list-1 (frame-first-window) 'ignore))
              with window-ring = (apply #'circular-list window-list)
              initially (unless (> (length window-list) 1) (cl-return))
              for windows on window-ring
@@ -207,14 +210,12 @@
                                                        (save-excursion
                                                          (let ((line-start (progn (sloff-move-to-window-line 0.0) (line-number-at-pos)))
                                                                (line-end (progn (sloff-move-to-window-line 1.0) (line-number-at-pos))))
-                                                           (when (= line-start line-end)
-                                                             (cl-return))
                                                            (forward-line (- (min line-count (1- (line-number-at-pos)))))
                                                            (or
                                                             (save-excursion
                                                               (cl-loop with line = (line-number-at-pos)
                                                                        initially (beginning-of-line) (back-to-indentation)
-                                                                       for word-start = (if (and (forward-word +1) (forward-word -1)) (point) (cl-return words))
+                                                                       for word-start = (if (and (forward-word +1) (forward-word -1)) (goto-char (max (point) (or word-end (point)))) (cl-return words))
                                                                        for word-end = (if (forward-word +1) (point) (cl-return words))
                                                                        while (= (line-number-at-pos) line)
                                                                        collect (buffer-substring word-start word-end) into words
